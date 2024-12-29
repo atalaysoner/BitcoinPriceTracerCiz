@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var selectedCrypto: Cryptocurrency = Cryptocurrency.availableCryptos[0]
     @State private var showCryptoPicker = false
     @State private var priceChangeThreshold: Double = 1.0 // Varsayılan %1
+    @State private var selectedLanguage: Language = .turkish
     
     private let cryptoService = CryptoPriceService()
     private let speechSynthesizer = AVSpeechSynthesizer()
@@ -37,6 +38,30 @@ struct ContentView: View {
             binanceDark.ignoresSafeArea()
             
             VStack(spacing: 24) {
+                // Dil seçici
+                HStack {
+                    Spacer()
+                    Menu {
+                        ForEach(Language.allCases) { language in
+                            Button(action: {
+                                selectedLanguage = language
+                            }) {
+                                HStack {
+                                    Text(language.displayName)
+                                    if selectedLanguage == language {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "globe")
+                            .foregroundColor(binanceYellow)
+                            .font(.title2)
+                    }
+                }
+                .padding(.horizontal)
+                
                 // Kripto seçici butonu
                 Button(action: { showCryptoPicker = true }) {
                     HStack {
@@ -77,13 +102,15 @@ struct ContentView: View {
                 
                 // Takip modu seçici
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Takip Modu")
+                    Text(Localizable.text(for: .trackingMode, language: selectedLanguage))
                         .foregroundColor(.white)
                         .font(.subheadline)
                     
                     Picker("Takip Modu", selection: $trackingMode) {
-                        Text("Zamanlı").tag(TrackingMode.timed)
-                        Text("Fiyat Değişimi").tag(TrackingMode.instant)
+                        Text(Localizable.text(for: .timedMode, language: selectedLanguage))
+                            .tag(TrackingMode.timed)
+                        Text(Localizable.text(for: .priceChangeMode, language: selectedLanguage))
+                            .tag(TrackingMode.instant)
                     }
                     .pickerStyle(.segmented)
                     .tint(binanceYellow)
@@ -94,11 +121,11 @@ struct ContentView: View {
                 
                 if trackingMode == .timed {
                     // Zaman aralığı seçici (mevcut hali)
-                    TimeIntervalPicker(refreshInterval: $refreshInterval, binanceYellow: binanceYellow, binanceGray: binanceGray)
+                    TimeIntervalPicker(refreshInterval: $refreshInterval, selectedLanguage: $selectedLanguage, binanceYellow: binanceYellow, binanceGray: binanceGray)
                 } else {
                     // Fiyat değişimi yüzdesi seçici
                     VStack(alignment: .leading) {
-                        Text("Fiyat Değişim Yüzdesi")
+                        Text(Localizable.text(for: .priceChangePercentage, language: selectedLanguage))
                             .foregroundColor(.white)
                             .font(.subheadline)
                         
@@ -111,7 +138,7 @@ struct ContentView: View {
                                 .frame(width: 60)
                         }
                         
-                        Text("Fiyat %\(String(format: "%.1f", priceChangeThreshold)) değiştiğinde bildirim al")
+                        Text(Localizable.text(for: .notifyWhenPriceChanges, language: selectedLanguage))
                             .foregroundColor(binanceGray)
                             .font(.caption)
                     }
@@ -131,7 +158,7 @@ struct ContentView: View {
                 }) {
                     HStack {
                         Image(systemName: isTracking ? "pause.circle.fill" : "play.circle.fill")
-                        Text(isTracking ? "Durdur" : "Başlat")
+                        Text(isTracking ? Localizable.text(for: .stop, language: selectedLanguage) : Localizable.text(for: .start, language: selectedLanguage))
                     }
                     .font(.headline)
                     .foregroundColor(binanceDark)
@@ -144,7 +171,7 @@ struct ContentView: View {
             .padding()
         }
         .sheet(isPresented: $showCryptoPicker) {
-            CryptoPickerView(selectedCrypto: $selectedCrypto)
+            CryptoPickerView(selectedCrypto: $selectedCrypto, selectedLanguage: $selectedLanguage)
                 .presentationDetents([.medium])
         }
         .onChange(of: selectedCrypto) { _ in
@@ -234,19 +261,28 @@ struct ContentView: View {
         
         if isChange {
             if let current = Double(price), let previous = Double(previousPrice) {
-                let direction = current > previous ? "yükseldi" : "düştü"
+                let direction = current > previous ? 
+                    Localizable.text(for: .priceIncreased, language: selectedLanguage) :
+                    Localizable.text(for: .priceDecreased, language: selectedLanguage)
+                
                 if let percent = changePercent {
-                    message = "\(selectedCrypto.name) fiyatı yüzde \(String(format: "%.1f", percent)) \(direction). Yeni fiyat \(price) Amerikan Doları"
-                } else {
-                    message = "\(selectedCrypto.name) fiyatı \(direction). Yeni fiyat \(price) Amerikan Doları"
+                    if selectedLanguage == .turkish {
+                        message = "\(selectedCrypto.name) fiyatı yüzde \(String(format: "%.1f", percent)) \(direction). Yeni fiyat \(price) Amerikan Doları"
+                    } else {
+                        message = "The price of \(selectedCrypto.name) has \(direction) by \(String(format: "%.1f", percent))%. New price is \(price) US Dollars"
+                    }
                 }
             }
         } else {
-            message = "\(selectedCrypto.name)'in güncel fiyatı \(price) Amerikan Doları"
+            if selectedLanguage == .turkish {
+                message = "\(selectedCrypto.name)'in güncel fiyatı \(price) Amerikan Doları"
+            } else {
+                message = "The current price of \(selectedCrypto.name) is \(price) US Dollars"
+            }
         }
         
         let utterance = AVSpeechUtterance(string: message)
-        utterance.voice = AVSpeechSynthesisVoice(language: "tr-TR")
+        utterance.voice = AVSpeechSynthesisVoice(language: selectedLanguage.locale)
         utterance.rate = 0.5
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
@@ -259,6 +295,7 @@ struct ContentView: View {
 struct CryptoPickerView: View {
     @Environment(\.dismiss) var dismiss
     @Binding var selectedCrypto: Cryptocurrency
+    @Binding var selectedLanguage: Language
     
     var body: some View {
         NavigationView {
@@ -275,7 +312,7 @@ struct CryptoPickerView: View {
                     }
                 }
             }
-            .navigationTitle("Kripto Seç")
+            .navigationTitle(Localizable.text(for: .selectCrypto, language: selectedLanguage))
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -311,19 +348,20 @@ extension Color {
 // Zaman aralığı seçici için yeni view
 struct TimeIntervalPicker: View {
     @Binding var refreshInterval: Double
+    @Binding var selectedLanguage: Language
     let binanceYellow: Color
     let binanceGray: Color
     
     var body: some View {
         VStack(alignment: .leading) {
-            Text("Bildirim Aralığı")
+            Text(Localizable.text(for: .notificationInterval, language: selectedLanguage))
                 .foregroundColor(.white)
                 .font(.subheadline)
             
             Slider(value: $refreshInterval, in: 10...300, step: 10)
                 .tint(binanceYellow)
             
-            Text("\(Int(refreshInterval)) saniye")
+            Text("\(Int(refreshInterval)) \(Localizable.text(for: .seconds, language: selectedLanguage))")
                 .foregroundColor(binanceGray)
                 .font(.caption)
         }
